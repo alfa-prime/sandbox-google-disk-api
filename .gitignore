@@ -1,0 +1,7 @@
+.temp
+.tokens
+img
+Pipfile
+Pipfile.lock
+.idea
+__pycache__
