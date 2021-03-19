@@ -10,7 +10,7 @@ API_NAME = 'drive'
 API_VERSION = 'v3'
 SCOPES = ['https://www.googleapis.com/auth/drive']
 
-service_ = Create_Service(CLIENT_SECRET_FILE, API_NAME, API_VERSION, SCOPES)
+service = Create_Service(CLIENT_SECRET_FILE, API_NAME, API_VERSION, SCOPES)
 
 def load_photos():
     """ берем сведения о фотках """
@@ -22,44 +22,31 @@ def local_dir_exists(path):
     if os.path.exists(path) is False:
         os.mkdir(path)
 
-def item_exist(name, service, parent):
+def item_exist(name, service_, parent):
     """ проверяем существует ли папка или файл """
-    if parent:
-        query = f"(name='{name}') and (trashed=false) and (parents='{parent}')"
-    else:
-        query = f"(name='{name}') and (trashed=false)"
+    query = f"(name='{name}') and (trashed=false)"
+    query = f"{query} and (parents='{parent}')" if parent else query
 
-    response = service.files().list(q=query, spaces='drive').execute()
+    response = service_.files().list(q=query, spaces='drive').execute()
     files = response.get('files')
-    # на время отладки
-    print(response)
-    if not files:
-        return False
-    else:
-        return files[0]['id']
 
-def make_dir(name, service, parents=None):
+    return files[0]['id'] if files else False
+
+def make_dir(name, service_, parents_=None):
     """ создание папки """
-    if not item_exist(name, service, parents):
-        file_metadata_ = {
-            'name': name,
-            'mimeType': 'application/vnd.google-apps.folder'
-        }
-        if parents:
-            file_metadata_ = {
-                **file_metadata_,
-                'parents': [parents]
-            }
-        file_ = service.files().create(body=file_metadata_, fields='id').execute()
-        return file_.get('id')
-    else:
-        return item_exist(name, service, parents)
+    def make():
+        metadata = {'name': name, 'mimeType': 'application/vnd.google-apps.folder'}
+        metadata = {**metadata, 'parents': [parents_]} if parents_ else metadata
+        print('make:', name)
+        return service_.files().create(body=metadata, fields='id').execute().get('id')
+
+    item_id = item_exist(name, service_, parents_)
+
+    return item_id or make()
 
 
-# рутовая папка, пока задется руками
-name_ = 'Михаил Афанасьевич'
-root_folder_id = make_dir(name_, service_)
-
+root_folder_name = 'Михаил Афанасьевич'
+root_folder_id = make_dir(root_folder_name, service)
 photos = load_photos()
 # получаю уникальные названия альбомов
 folders = set(photos[index]['album_title'] for index in photos)
@@ -67,7 +54,7 @@ folders_google_id = {}
 
 # на gdisk создаю папки по именам альбомов
 for folder in folders:
-    folders_google_id[folder] = make_dir(folder, service_, root_folder_id)
+    folders_google_id[folder] = make_dir(folder, service, root_folder_id)
 
 for values in photos.values():
     title = values['album_title']
@@ -85,12 +72,14 @@ for values in photos.values():
     # todo: прописать удаление временной папки по оконачнии скрипта
     urllib.request.urlretrieve(image_url, f"{file_path}{file_name}")
 
-    file_metadata = {
-        'name': file_name,
-        'parents': [parents],
-    }
+    print(file_name)
 
     # загружаю фото на gdisk
-    if not item_exist(file_name, service_, parents):
+    if not item_exist(file_name, service, parents):
+        file_metadata = {
+            'name': file_name,
+            'parents': [parents],
+        }
+
         media = MediaFileUpload(f"{file_path}{file_name}", mimetype='image/jpeg', resumable=True)
-        file = service_.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
